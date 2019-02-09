@@ -6,9 +6,9 @@ using namespace std;
 
 TrsIO* TrsIO::modules[TRSIO_MAX_MODULES] = {};
 
-uint8_t* TrsIO::sendBuffer = nullptr;
+uint8_t TrsIO::sendBuffer[TRSIO_MAX_SEND_BUFFER];
 
-uint16_t TrsIO::sendBufferLen = 0;
+uint8_t* TrsIO::sendPtr;
 
 uint8_t TrsIO::receiveBuffer[TRSIO_MAX_RECEIVE_BUFFER];
 uint8_t* TrsIO::receivePtr;
@@ -21,19 +21,19 @@ uint16_t TrsIO::bytesToRead;
 
 const char* TrsIO::signatureParams;
 
-uint8_t* TrsIO::param_bytes[TRSIO_MAX_PARAMETERS_PER_TYPE];
-uint8_t* TrsIO::param_ints[TRSIO_MAX_PARAMETERS_PER_TYPE];
-uint8_t* TrsIO::param_longs[TRSIO_MAX_PARAMETERS_PER_TYPE];
-uint8_t* TrsIO::param_strs[TRSIO_MAX_PARAMETERS_PER_TYPE];
-uint8_t* TrsIO::param_blocks[TRSIO_MAX_PARAMETERS_PER_TYPE];
-uint16_t TrsIO::param_blocks_len[TRSIO_MAX_PARAMETERS_PER_TYPE];
+uint8_t* TrsIO::paramBytes[TRSIO_MAX_PARAMETERS_PER_TYPE];
+uint8_t* TrsIO::paramInts[TRSIO_MAX_PARAMETERS_PER_TYPE];
+uint8_t* TrsIO::paramLongs[TRSIO_MAX_PARAMETERS_PER_TYPE];
+uint8_t* TrsIO::paramStrs[TRSIO_MAX_PARAMETERS_PER_TYPE];
+uint8_t* TrsIO::paramBlobs[TRSIO_MAX_PARAMETERS_PER_TYPE];
+uint16_t TrsIO::paramBlobsLen[TRSIO_MAX_PARAMETERS_PER_TYPE];
 
 
-uint16_t TrsIO::paramCurrentByte;
-uint16_t TrsIO::paramCurrentInt;
-uint16_t TrsIO::paramCurrentLong;
-uint16_t TrsIO::paramCurrentStr;
-uint16_t TrsIO::paramCurrentBlock;
+uint16_t TrsIO::numParamByte;
+uint16_t TrsIO::numParamInt;
+uint16_t TrsIO::numParamLong;
+uint16_t TrsIO::numParamStr;
+uint16_t TrsIO::numParamBlob;
 
 void TrsIO::initModules() {
     for (auto &module : modules) {
@@ -46,44 +46,44 @@ void TrsIO::initModules() {
 }
 
 void TrsIO::reset() {
-    state = NEW_CMD;
-    paramCurrentByte = 0;
-    paramCurrentInt = 0;
-    paramCurrentLong = 0;
-    paramCurrentStr = 0;
-    paramCurrentBlock = 0;
+    state = STATE_NEW_CMD;
+    numParamByte = 0;
+    numParamInt = 0;
+    numParamLong = 0;
+    numParamStr = 0;
+    numParamBlob = 0;
     receivePtr = receiveBuffer;
 }
 
 bool TrsIO::consumeNextByteFromZ80(uint8_t byte) {
-    static uint8_t b;
+    static uint8_t last_byte;
 
     switch (state) {
-        case NEW_CMD:
+        case STATE_NEW_CMD:
             cmd = byte;
             signatureParams = currentModule->commands[cmd].signature;
             break;
-        case ACCEPT_FIXED_LENGTH_PARAM:
+        case STATE_ACCEPT_FIXED_LENGTH_PARAM:
             *receivePtr++ = byte;
             if (--bytesToRead == 0) {
                 break;
             }
             return true;
-        case ACCEPT_STRING_PARAM:
+        case STATE_ACCEPT_STRING_PARAM:
             *receivePtr++ = byte;
             if (byte == 0) {
                 break;
             }
             return true;
-        case ACCEPT_BLOCK_LEN_1:
-            b = byte;
-            state = ACCEPT_BLOCK_LEN_2;
+        case STATE_ACCEPT_BLOCK_LEN_1:
+            last_byte = byte;
+            state = STATE_ACCEPT_BLOCK_LEN_2;
             return true;
-        case ACCEPT_BLOCK_LEN_2:
-            bytesToRead = b | (byte << 8);
-            param_blocks_len[paramCurrentBlock] = bytesToRead;
-            param_blocks[paramCurrentBlock++] = receivePtr;
-            state = ACCEPT_FIXED_LENGTH_PARAM;
+        case STATE_ACCEPT_BLOCK_LEN_2:
+            bytesToRead = last_byte | (byte << 8);
+            paramBlobsLen[numParamBlob] = bytesToRead;
+            paramBlobs[numParamBlob++] = receivePtr;
+            state = STATE_ACCEPT_FIXED_LENGTH_PARAM;
             return true;
     }
 
@@ -93,56 +93,46 @@ bool TrsIO::consumeNextByteFromZ80(uint8_t byte) {
 
     switch (*signatureParams++) {
         case 'B':
-            param_bytes[paramCurrentByte++] = receivePtr;
+            paramBytes[numParamByte++] = receivePtr;
             bytesToRead = 1;
-            state = ACCEPT_FIXED_LENGTH_PARAM;
+            state = STATE_ACCEPT_FIXED_LENGTH_PARAM;
             break;
         case 'I':
-            param_ints[paramCurrentInt++] = receivePtr;
+            paramInts[numParamInt++] = receivePtr;
             bytesToRead = 2;
-            state = ACCEPT_FIXED_LENGTH_PARAM;
+            state = STATE_ACCEPT_FIXED_LENGTH_PARAM;
             break;
         case 'L':
-            param_longs[paramCurrentLong++] = receivePtr;
+            paramLongs[numParamLong++] = receivePtr;
             bytesToRead = 4;
-            state = ACCEPT_FIXED_LENGTH_PARAM;
+            state = STATE_ACCEPT_FIXED_LENGTH_PARAM;
             break;
         case 'S':
-            param_strs[paramCurrentStr++] = receivePtr;
-            state = ACCEPT_STRING_PARAM;
+            paramStrs[numParamStr++] = receivePtr;
+            state = STATE_ACCEPT_STRING_PARAM;
             break;
         case 'Z':
-            state = ACCEPT_BLOCK_LEN_1;
+            state = STATE_ACCEPT_BLOCK_LEN_1;
             break;
         default:
-            //TODO bad signature string
-            ;
+            // bad signature string
+            assert(0);
     }
     return true;
 }
 
 void TrsIO::process() {
+    sendPtr = sendBuffer;
     commands[cmd].proc();
     reset();
 }
 
-void TrsIO::setSendBuffer(uint8_t* buffer, uint16_t bufferLen) {
-    sendBuffer = buffer;
-    sendBufferLen = bufferLen;
-}
-
-uint8_t* TrsIO::getSendBuffer() {
-    return sendBuffer;
-}
-
-uint16_t TrsIO::getSendBufferLen() {
-    return sendBufferLen;
-}
-
 uint8_t TrsIO::getNextByteFromSendBuffer() {
+    /*
     if (sendBufferLen == 0) {
         return 0xff;
     }
     sendBufferLen--;
     return *sendBuffer++;
+     */
 }
