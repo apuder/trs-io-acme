@@ -53,27 +53,32 @@ public:
 
     static void cmd1() {
         // Signature: II
-        cout << "cmd1(" << i(0) << ", " << i(1) << ")\n";
+        addInt(i(0));
+        addInt(i(1));
     }
 
     static void cmd2() {
         // Signature IBLBI
-        cout << "cmd2(" << i(0) << ", " << (int) b(0) << ", " << l(0) << ", " << (int) b(1) << ", " << i(1) << ")\n";
+        addInt(i(0));
+        addByte(b(0));
+        addLong(l(0));
+        addByte(b(1));
+        addInt(i(1));
     }
 
     static void cmd3() {
         // Signature BSB
-        cout << "cmd3(" << (int) b(0) << ", " << s(0) << ", " << (int) b(1) << ")\n";
+        addByte(b(0));
+        addStr(s(0));
+        addByte(b(1));
     }
 
     static void cmd4() {
         // Signature ZB
-        uint8_t* p = z(0);
-        cout << "cmd3(len=" << zl(0) << ", ";
-        for (int i = 0; i < zl(0); i++) {
-            cout << (int) *p++ << ", ";
-        }
-        cout << (int) b(0) << ")\n";
+        uint8_t* blob = z(0);
+        uint16_t blobLen = zl(0);
+        addBlob(blob, blobLen);
+        addByte(b(0));
     }
 };
 

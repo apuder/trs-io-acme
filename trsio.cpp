@@ -126,13 +126,3 @@ void TrsIO::process() {
     commands[cmd].proc();
     reset();
 }
-
-uint8_t TrsIO::getNextByteFromSendBuffer() {
-    /*
-    if (sendBufferLen == 0) {
-        return 0xff;
-    }
-    sendBufferLen--;
-    return *sendBuffer++;
-     */
-}

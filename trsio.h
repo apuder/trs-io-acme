@@ -5,6 +5,7 @@
 #pragma once
 
 #include <inttypes.h>
+#include <string.h>
 #include <assert.h>
 
 
@@ -75,6 +76,7 @@ public:
 
     explicit TrsIO(int id) {
         assert(id < TRSIO_MAX_MODULES);
+        assert(modules[id] == nullptr);
         modules[id] = this;
         numCommands = 0;
     }
@@ -125,7 +127,47 @@ protected:
         return paramBlobsLen[idx];
     }
 
+    inline static void addByte(uint8_t b) {
+        assert(sendPtr + sizeof(uint8_t) <= sendBuffer + TRSIO_MAX_SEND_BUFFER);
+        *sendPtr++ = b;
+    }
+
+    inline static void addInt(uint16_t i) {
+        assert(sendPtr + sizeof(uint16_t) <= sendBuffer + TRSIO_MAX_SEND_BUFFER);
+        *((uint16_t*) sendPtr) = i;
+        sendPtr += sizeof(uint16_t);
+    }
+
+    inline static void addLong(uint32_t l) {
+        assert(sendPtr + sizeof(uint32_t) <= sendBuffer + TRSIO_MAX_SEND_BUFFER);
+        *((uint32_t*) sendPtr) = l;
+        sendPtr += sizeof(uint32_t);
+    }
+
+    inline static void addStr(const char* str) {
+        assert(sendPtr + strlen(str) < sendBuffer + TRSIO_MAX_SEND_BUFFER);
+        do {
+            addByte((uint8_t) *str);
+        } while (*str++ != '\0');
+    }
+
+    inline static void addBlob(void* blob, uint16_t len) {
+        assert(sendPtr + sizeof(uint16_t) + len <= sendBuffer + TRSIO_MAX_SEND_BUFFER);
+        auto p = (uint8_t*) blob;
+        addInt(len);
+        for (int i = 0; i < len; i++) {
+            addByte(*p++);
+        }
+    }
+
 public:
+    static unsigned long getSendBufferLen() {
+        return sendPtr - sendBuffer;
+    }
+
+    static uint8_t* getSendBuffer() {
+        return sendBuffer;
+    }
+
     void process();
-    static uint8_t getNextByteFromSendBuffer();
 };
